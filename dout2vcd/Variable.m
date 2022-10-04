@@ -47,8 +47,9 @@
 
 - (NSString *) description
 	{
-	return [NSString stringWithFormat:@"Variable: %@ (%d) : '%c' %@",
+	return [NSString stringWithFormat:@"Variable: %@ %llx (%d) : '%c' %@",
 					_name,
+					_value,
 					_width,
 					_token,
 					(_record ? @"" : @"(ignored)")];

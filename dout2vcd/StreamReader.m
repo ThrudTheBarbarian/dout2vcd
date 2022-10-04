@@ -6,6 +6,7 @@
 //
 
 #define VERSION_STR		"DOUT -> VCD generator tool v0.1"
+#define STATE_NUMBER	"Time"
 
 #import "NSString+Binary.h"
 #import "StreamReader.h"
@@ -237,19 +238,35 @@
 
 	NSCharacterSet *cs = [NSCharacterSet whitespaceAndNewlineCharacterSet];
 	NSCharacterSet *ws = [NSCharacterSet whitespaceCharacterSet];
-	
+
+	/************************************************************************\
+	|* Find the index of the State Number field
+	\************************************************************************/
+	int timeIdx = 0;
+	for (Variable *v in _vars)
+		{
+		if ([v format] == TIME)
+			break;
+		timeIdx ++;
+		}
+
 	/************************************************************************\
 	|* Loop over all the data
 	\************************************************************************/
-	while (!feof(_fp))
+	while (true)
 		{
 		long long currentTime 	= 0;
 		bool changes			= firstRecord;
 		
 		if (fgets(buf, 2048, _fp) == NULL)
 			{
-			fprintf(stderr, " * Failed to read in streaming data\n");
-			return false;
+			if (!feof(_fp))
+				{
+				fprintf(stderr, " * Failed to read in streaming data\n");
+				return false;
+				}
+			fprintf(stderr, " - Completed streaming data\n");
+			return true;
 			}
 		
 		/********************************************************************\
@@ -258,21 +275,35 @@
 		NSString *line 	= [NSString stringWithUTF8String:buf];
 		line 			= [line stringByTrimmingCharactersInSet:cs];
 		NSArray *items	= [line componentsSeparatedByCharactersInSet:ws];
+
+		/********************************************************************\
+		|* If this is the first time around, get the starting time directly
+		\********************************************************************/
+		if (firstRecord)
+			startTime = [[items objectAtIndex:timeIdx] longLongValue];
+		
 		int itemIdx		= 0;
 		for (Variable *v in _vars)
 			{
 			NSString *val = [items objectAtIndex:itemIdx];
 			
-			if ([[v name] isEqualToString:@"State Number"])
+			if ([v format] == TIME)
 				{
-				if (firstRecord)
-					startTime = [val longLongValue];
-				else
-					currentTime = [val longLongValue] - startTime;
+				long long now	= [val longLongValue];
+				currentTime = now - startTime;
 				}
 			else if ([v record])
 				{
-				uint64_t newVal = [val longLongValue];
+				uint64_t newVal = (uint64_t)-1;
+				
+				if ([v format] == HEX)
+					{
+					NSScanner* scanner = [NSScanner scannerWithString:val];
+					[scanner scanHexLongLong:&newVal];
+					}
+				else
+					newVal = [val longLongValue];
+				
 				if (newVal != [v value])
 					{
 					[v setValue:newVal];
@@ -282,7 +313,6 @@
 				if (firstRecord)
 					[v setIsDirty:true];
 				}
-			
 				
 			itemIdx ++;
 			}
@@ -292,7 +322,7 @@
 		\********************************************************************/
 		if (changes)
 			{
-			fprintf(_ofp, "#%lld\n", currentTime - startTime);
+			fprintf(_ofp, "#%lld\n", currentTime);
 			
 			for (Variable *v in _vars)
 				{
@@ -303,6 +333,8 @@
 					}
 				}
 			}
+		
+		firstRecord = false;
 		}
 	return true;
 	}
